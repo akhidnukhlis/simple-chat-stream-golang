@@ -1,37 +1,39 @@
 package main
 
 import (
-	"fmt"
-	"github.com/akhidnukhlis/simple-chat-stream-golang/pkg/stream"
-	"github.com/gorilla/websocket"
+	client "github.com/akhidnukhlis/simple-chat-stream-golang/pkg/stream/chat/client"
+	server "github.com/akhidnukhlis/simple-chat-stream-golang/pkg/stream/chat/server"
 	"log"
 	"net/http"
+	"net/url"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-}
-
-func handleConnections(cMgr stream.ClientManagerInterface, w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	defer conn.Close()
-
-	client := stream.NewChatClient(conn, cMgr)
-	cMgr.RegisterClient(client)
-}
-
 func main() {
-	clientManager := stream.NewChatClientManager()
+	//start the server
+	processor := server.TextMessageProcessor{}
+	chat := server.NewChat(&processor)
+	go chat.Start()
 
 	http.HandleFunc("/chat", func(w http.ResponseWriter, r *http.Request) {
-		handleConnections(clientManager, w, r)
+		server.HandleConnection(chat, w, r)
 	})
 
-	fmt.Println("Server chat berjalan di http://localhost:8080")
-	http.ListenAndServe(":8080", nil)
+	if err := http.ListenAndServe(":8008", nil); err != nil {
+		log.Printf("webSocket server got error: ", err)
+		return
+	}
+	//http.ListenAndServe(":8008", nil)
+
+	log.Printf("WebSocket server started on : 8008")
+
+	//start the client
+	u := url.URL{Scheme: "ws", Host: "localhost:8008", Path: "/chat"}
+	handler := client.ConsoleMessageHandler{}
+	socketClient, err := client.NewWebSocketClient(u.String(), handler)
+	if err != nil {
+		log.Printf("client creation error: ", err)
+		return
+	}
+
+	socketClient.Start()
 }
